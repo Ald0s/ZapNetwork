@@ -22,6 +22,7 @@ namespace ZapNetwork.Server {
     public class CServerMain : CObjectBase {
         public bool Listening { get { return shouldAccept; } }
         public ServerCfg Configuration { get { return this.config; } }
+        public List<CServerClient> Clients { get { return this.clients; } }
 
         private ServerCfg config = null;
 
@@ -77,28 +78,55 @@ namespace ZapNetwork.Server {
 
         private void AcceptClients() {
             try {
-                while (shouldAccept) {
-                    TcpClient client = listener.AcceptTcpClient();
-                    string remote_addr = client.Client.RemoteEndPoint.ToString();
-
-                    if (!client.Connected) {
-                        NegativeStatus("Refused connection from " + remote_addr + ": not connected");
-                        return;
-                    }
-
-                    PositiveStatus(remote_addr + " connected!");
-                    CServerClient user = new CServerClient(this, client);
-
-                    if (!user.Connected) {
-                        NegativeStatus("Refused connection from " + remote_addr + ": couldn't build client!");
-                        return;
-                    }
-
-                    clients.Add(user);
-                }
+                listener.BeginAcceptTcpClient(new AsyncCallback(AcceptClient), null);
             }catch(Exception e) {
                 ExceptionSummary(e);
             }
+        }
+
+        private void AcceptClient(IAsyncResult ar) {
+            try {
+                TcpClient client = listener.EndAcceptTcpClient(ar);
+                string remote_addr = client.Client.RemoteEndPoint.ToString();
+
+                if (!client.Connected) {
+                    NegativeStatus("Refused connection from " + remote_addr + ": not connected");
+                    return;
+                }
+
+                PositiveStatus(remote_addr + " connected!");
+                NewClient(this, client);
+
+                AcceptClients();
+            } catch(Exception e) {
+                ExceptionSummary(e);
+            }
+        }
+
+        /// <summary>
+        /// Override this function to instantiate your own derived type of CServerClient.
+        /// DO NOT CALL BASE!!!!!!! Instead, call UserConnected() with your new type.
+        /// </summary>
+        protected virtual void NewClient(CServerMain main, TcpClient client) {
+            UserConnected(new CServerClient(this, client));
+        }
+
+        protected void UserConnected(CServerClient client) {
+            if (!client.Connected) {
+                NegativeStatus("Refused connection from " + client.ConnectionInfo + ": couldn't build client!");
+                client.Kick("Unknown serverside error.");
+                return;
+            }
+
+            clients.Add(client);
+        }
+
+        public CServerClient GetClient(int id) {
+            foreach(CServerClient client in clients) {
+                if (client.ClientID == id)
+                    return client;
+            }
+            return null;
         }
 
         public void HandleDisconnection(CServerClient client, string reason) {

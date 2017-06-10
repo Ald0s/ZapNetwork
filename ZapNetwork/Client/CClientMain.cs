@@ -81,38 +81,37 @@ namespace ZapNetwork.Client {
         }
 
         private bool ConnectToServer(bool use_thread) {
-            int port = config.PortNumber;
-            if (port < 0 || port > 65535) {
-                NegativeStatus("FATAL! Failed to connect to server; port number is invalid (" + port + ")");
-                return false;
-            }
-
-            if (!config.IsIPAddressValid()) {
-                NegativeStatus("FATAL! Failed to connect to server; ip address is invalid (" + port + ")");
-                return false;
-            }
-
-            this.client = new TcpClient();
-            this.client.BeginConnect(config.Target, config.PortNumber, new AsyncCallback(Connect_Callback), use_thread);
-
-            return true;
-        }
-
-        private void Connect_Callback(IAsyncResult ar) {
             try {
-                client.EndConnect(ar);
+                int port = config.PortNumber;
+                if (port < 0 || port > 65535) {
+                    NegativeStatus("FATAL! Failed to connect to server; port number is invalid (" + port + ")");
+                    return false;
+                }
+
+                if (!config.IsIPAddressValid()) {
+                    NegativeStatus("FATAL! Failed to connect to server; ip address is invalid (" + port + ")");
+                    return false;
+                }
+
+                this.client = new TcpClient();
+                this.client.Connect(new IPEndPoint(config.Target, config.PortNumber));
+
                 if (!Connected) {
                     Shutdown("Failed to properly connect.");
-                    return;
+                    return false;
                 }
 
                 PositiveStatus("Connected to target server! Waiting for authentication...");
 
-                Start((bool)ar.AsyncState);
+                Start(use_thread);
                 SendNetMessage(new msg_Auth(0, config.Password));
+
+                return true;
             } catch (SocketException) {
                 NegativeStatus("Failed to connect to the given host. Is it alive?");
-                Shutdown("host-down");
+                Shutdown("The foreign host actively refused the connection!");
+
+                return false;
             }
         }
 

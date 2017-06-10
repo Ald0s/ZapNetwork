@@ -24,6 +24,8 @@ using ZapNetwork.Shared.Messages;
 namespace ZapNetwork.Server {
     public class CServerClient : CClientShared {
         public bool Connected { get { return client.Connected && bValid; } }
+        public string ConnectionInfo { get { return this.sConnectionInfo; } }
+        public int ClientID { get { return this.iClientID; } }
 
         private CServerMain main;
 
@@ -33,17 +35,19 @@ namespace ZapNetwork.Server {
         public delegate void NetMessageReceived_Delegate(CServerClient client, CNetMessage message);
         public event NetMessageReceived_Delegate NetMessageReceived;
 
-        private bool bValid = false;
+        private string sConnectionInfo = null;
         private bool bAuthenticated = false;
 
+        private int iClientID = -1;
         private int iServerNumber = -1;
 
         public CServerClient(CServerMain _main, TcpClient _client, bool use_thread = true)
             : base(_client.Client.RemoteEndPoint.ToString()) {
             this.main = _main;
             this.client = _client;
-            this.bValid = true;
+            sConnectionInfo = this.client.Client.RemoteEndPoint.ToString();
 
+            CreateID();
             Start(use_thread);
         }
 
@@ -51,11 +55,10 @@ namespace ZapNetwork.Server {
             if (reason == null || reason.Length == 0)
                 reason = "No reason given.";
 
+            NegativeStatus("I've been kicked. (" + reason + ")");
             SendNetMessage(new msg_Kick(reason));
         }
-
-        // For handling internal net messages.
-        // We don't want our end-user to handle these, so return on each clause of the switch-case statement.
+        
         protected override void HandleNetMessageInternal(CNetMessage msg) {
             Random r = new Random();
 
@@ -112,12 +115,25 @@ namespace ZapNetwork.Server {
 
         protected override void NetStream_CloseStream(CNetStream stream, NetStreamClose_e reason) {
             main.HandleDisconnection(this, reason.ToString());
+            base.NetStream_CloseStream(stream, reason);
         }
 
         public override void Shutdown(string reason) {
             bAuthenticated = false;
 
             base.Shutdown(reason);
+        }
+
+        private void CreateID() {
+            Random r = new Random();
+            while (true) {
+                int id = r.Next(1, int.MaxValue - 1);
+                if (main.GetClient(id) != null)
+                    continue;
+
+                iClientID = id;
+                break;
+            }
         }
     }
 }

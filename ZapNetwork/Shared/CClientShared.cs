@@ -18,6 +18,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Runtime.Serialization.Formatters.Binary;
 using System.IO;
+using System.Runtime.Serialization;
 
 namespace ZapNetwork.Shared {
     public class CClientShared : CObjectBase {
@@ -25,13 +26,17 @@ namespace ZapNetwork.Shared {
         protected Thread thrClient = null;
         protected CNetStream netStream = null;
 
+        protected bool bValid = false;
+
         public CClientShared(string _name)
             : base(_name) {
             
         }
 
-        // When client is connected, call Setup() to initialise the actual processes.
+        // When client is connected, call Start() to initialise the actual processes.
         protected void Start(bool use_thread) {
+            bValid = true;
+
             this.netStream = new CNetStream(client);
             netStream.DataReceived += NetStream_DataReceived;
             netStream.CloseStream += NetStream_CloseStream;
@@ -45,6 +50,9 @@ namespace ZapNetwork.Shared {
         }
 
         public virtual void SendNetMessage(CNetMessage msg) {
+            if (!bValid)
+                return;
+
             try {
                 byte[] btOutgoingBuffer = null;
 
@@ -64,11 +72,17 @@ namespace ZapNetwork.Shared {
                 }
 
                 netStream.WriteBuffer(btOutgoingBuffer, btOutgoingBuffer.Length);
+            } catch (SerializationException) {
+                NegativeStatus("FATAL! Is your net message type marked with the Serializable attribute?");
             } catch (Exception e) {
                 ExceptionSummary(e);
             }
         }
 
+        /// <summary>
+        /// DO NOT OVERRIDE UNLESS YOU'RE GOOD!!!
+        /// For handling internal net messages.
+        /// </summary>
         protected virtual void HandleNetMessageInternal(CNetMessage msg) {
 
         }
@@ -88,6 +102,8 @@ namespace ZapNetwork.Shared {
                     NegativeStatus("Disconnect! The stream is corrupt!");
                     break;
             }
+
+            bValid = false;
         }
 
         private void NetStream_DataReceived(CNetStream stream, byte[] buffer, int num_read) {

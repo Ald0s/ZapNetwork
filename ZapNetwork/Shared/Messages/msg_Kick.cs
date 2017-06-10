@@ -21,12 +21,7 @@ namespace ZapNetwork.Shared.Messages {
 
         public msg_Kick(string reason)
             : base("kick_user") {
-            WriteString(reason);
-        }
-
-        public msg_Kick()
-            : base("kick_user") {
-            sReason = ReadString();
+            this.sReason = reason;
         }
     }
 }
