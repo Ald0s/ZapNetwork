@@ -16,11 +16,13 @@ using System.Threading.Tasks;
 using System.Net;
 using System.Net.Sockets;
 using ZapNetwork.Shared;
-using ZapNetwork.Shared.Messages;
 
 namespace ZapNetwork.Client {
     public class CClientMain : CClientShared {
         public bool Connected { get { return client.Connected; } }
+        public string ServerName { get { return this.sServerName; } }
+        public string ServerDescription { get { return this.sServerDescription; } }
+        public int ClientID { get { return this.iClientID; } }
 
         public ClientCfg Configuration { get { return this.config; } }
         private ClientCfg config;
@@ -34,6 +36,10 @@ namespace ZapNetwork.Client {
         public delegate void Disconnected_Delegate(string reason);
         public event Disconnected_Delegate Disconnected;
 
+        private string sServerName;
+        private string sServerDescription;
+        private int iClientID = -1;
+
         private bool bAuthenticated = false;
 
         public CClientMain(ClientCfg _cfg)
@@ -41,7 +47,11 @@ namespace ZapNetwork.Client {
             this.config = _cfg;
         }
 
-        public void Connect(bool use_thread = true) {
+        // Supply config here if its ever-changing.
+        public void Connect(ClientCfg cfg = null, bool use_thread = true) {
+            if (cfg != null)
+                config = cfg;
+
             if (!ConnectToServer(use_thread)) {
                 return;
             }
@@ -52,29 +62,36 @@ namespace ZapNetwork.Client {
         protected override void HandleNetMessageInternal(CNetMessage msg) {
             Random r = new Random();
 
-            switch (msg.MessageName) {
+            switch (msg.GetMessageName()) {
                 case "authentication":
-                    if (((msg_Auth)msg).ServerNumber == -48879) {
-                        string desc = ((msg_Auth)msg).Password;
-                        PositiveStatus("We've been authenticated! The server says; " + desc);
+                    if (bAuthenticated)
+                        return;
 
-                        if (Authenticated != null) {
-                            Authenticated(this);
-                        }
-                    } else {
-                        if (bAuthenticated)
-                            return;
-
-                        ((msg_Auth)msg).CalculateClientResult();
-                        SendNetMessage(msg);
-                    }
+                    int server = msg.ReadInt();
+                    ReplyChallenge(server);
                     return;
 
                 case "kick_user":
-                    Shutdown(((msg_Kick)msg).Reason);
+                    string reason = msg.ReadString();
+                    Shutdown(reason);
+                    return;
+
+                case "setup":
+                    iClientID = msg.ReadInt();
+                    sServerName = msg.ReadString();
+                    sServerDescription = msg.ReadString();
+
+                    ReceivedSetupData(msg);
+                    PositiveStatus("We've been authenticated! The server says; " + sServerDescription);
+                    bAuthenticated = true;
+
+                    if (Authenticated != null) {
+                        Authenticated(this);
+                    }
+                    
+                    SendSetupData(new CNetMessage("setup"));
                     return;
             }
-
             if (NetMessageReceived != null && bAuthenticated) {
                 NetMessageReceived(this, msg);
             }
@@ -104,7 +121,10 @@ namespace ZapNetwork.Client {
                 PositiveStatus("Connected to target server! Waiting for authentication...");
 
                 Start(use_thread);
-                SendNetMessage(new msg_Auth(0, config.Password));
+                CNetMessage auth = new CNetMessage("authentication");
+                auth.WriteInt(-1);
+
+                SendNetMessage(auth);
 
                 return true;
             } catch (SocketException) {
@@ -115,6 +135,26 @@ namespace ZapNetwork.Client {
             }
         }
 
+        // Override this to write data to the setup net message.
+        // This is received directly after authentication.
+        protected virtual void SendSetupData(CNetMessage setup) {
+            SendNetMessage(setup);
+        }
+
+        protected virtual void ReceivedSetupData(CNetMessage setup) {
+
+        }
+
+        private void ReplyChallenge(int server) {
+            int result = CalculateChallengeResult(server);
+
+            CNetMessage reply = new CNetMessage("authentication");
+            reply.WriteString(config.Password);
+            reply.WriteInt(result);
+
+            SendNetMessage(reply);
+        }
+
         public override void Shutdown(string reason) {
             bAuthenticated = false;
             base.Shutdown(reason);
@@ -122,6 +162,10 @@ namespace ZapNetwork.Client {
             if(Disconnected != null) {
                 Disconnected(reason);
             }
+
+            iClientID = -1;
+            sServerName = null;
+            sServerDescription = null;
 
             NegativeStatus("Disconnected: " + reason);
         }

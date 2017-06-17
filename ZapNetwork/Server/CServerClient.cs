@@ -19,7 +19,6 @@ using System.Net.Sockets;
 using ZapNetwork.Shared;
 using System.IO;
 using System.Runtime.Serialization.Formatters.Binary;
-using ZapNetwork.Shared.Messages;
 
 namespace ZapNetwork.Server {
     public class CServerClient : CClientShared {
@@ -31,6 +30,9 @@ namespace ZapNetwork.Server {
 
         public delegate void Authenticated_Delegate(CServerClient client);
         public event Authenticated_Delegate Authenticated;
+
+        public delegate void Disconnected_Delegate(CServerClient client, string reason);
+        public event Disconnected_Delegate Disconnected;
 
         public delegate void NetMessageReceived_Delegate(CServerClient client, CNetMessage message);
         public event NetMessageReceived_Delegate NetMessageReceived;
@@ -56,13 +58,16 @@ namespace ZapNetwork.Server {
                 reason = "No reason given.";
 
             NegativeStatus("I've been kicked. (" + reason + ")");
-            SendNetMessage(new msg_Kick(reason));
-        }
-        
-        protected override void HandleNetMessageInternal(CNetMessage msg) {
-            Random r = new Random();
 
-            switch (msg.MessageName) {
+            CNetMessage kick = new CNetMessage("kick");
+            kick.WriteString(reason);
+            SendNetMessage(kick);
+
+            Shutdown(reason);
+        }
+
+        protected override void HandleNetMessageInternal(CNetMessage msg) {
+            switch (msg.GetMessageName()) {
                 case "authentication":
                     if (bAuthenticated)
                         return;
@@ -70,14 +75,18 @@ namespace ZapNetwork.Server {
                     // Very weak challenge system - this is NOT advised for large scale applications,
                     // unless maybe very strong encryption and binary obfuscation is used to obscure the challenge algorithm.
                     if (iServerNumber < 0) {
-                        iServerNumber = r.Next(2 ^ 6, 2 ^ 14);
-                        ((msg_Auth)msg).ServerNumber = iServerNumber;
-
-                        SendNetMessage(msg);
+                        SendChallenge();
                     } else {
-                        VerifyClient((msg_Auth)msg);
+                        VerifyClient(msg);
                     }
                     return;
+
+                case "setup":
+                    SetupReceived(msg);
+                    if (Authenticated != null) {
+                        Authenticated(this);
+                    }
+                    break;
             }
 
             // Only allow the net message to end-user if we're authenticated (security.)
@@ -86,42 +95,59 @@ namespace ZapNetwork.Server {
             }
         }
 
-        private void VerifyClient(msg_Auth auth) {
+        private void VerifyClient(CNetMessage auth) {
+            string password = auth.ReadString();
+            int client = auth.ReadInt();
+
             // First, a password check.
-            if (main.Configuration.IsUsingPassword() && (auth.Password != main.Configuration.Password)) {
+            if (main.Configuration.IsUsingPassword() && (password != main.Configuration.Password)) {
                 Kick("Bad password.");
                 return;
             }
 
-            int client = auth.ClientResult;
-
-            msg_Auth ours = new msg_Auth(iServerNumber);
-            ours.CalculateClientResult();
-
-            if (client != ours.ClientResult) {
+            int our_result = CalculateChallengeResult(iServerNumber);
+            if (client != our_result) {
                 Kick("Bad challenge.");
                 return;
             }
 
             bAuthenticated = true;
-
-            if (Authenticated != null) {
-                Authenticated(this);
-            }
-
             PositiveStatus("I've been authenticated!");
-            SendNetMessage(new msg_Auth(-48879, main.Configuration.ServerDescription));
+
+            CNetMessage setup = new CNetMessage("setup");
+            setup.WriteInt(iClientID);
+            setup.WriteString(main.Configuration.ServerName);
+            setup.WriteString(main.Configuration.ServerDescription);
+
+            SendSetupInfo(setup);
         }
 
-        protected override void NetStream_CloseStream(CNetStream stream, NetStreamClose_e reason) {
-            main.HandleDisconnection(this, reason.ToString());
-            base.NetStream_CloseStream(stream, reason);
+        // Override this to send some default information.
+        protected virtual void SendSetupInfo(CNetMessage setup) {
+            SendNetMessage(setup);
         }
 
         public override void Shutdown(string reason) {
             bAuthenticated = false;
+            if (this.Disconnected != null) {
+                Disconnected(this, reason);
+            }
 
             base.Shutdown(reason);
+        }
+
+        protected virtual void SetupReceived(CNetMessage setup) {
+
+        }
+
+        private void SendChallenge() {
+            Random r = new Random();
+            iServerNumber = r.Next(2 ^ 6, 2 ^ 14);
+
+            CNetMessage auth = new CNetMessage("authentication");
+            auth.WriteInt(iServerNumber);
+
+            SendNetMessage(auth);
         }
 
         private void CreateID() {

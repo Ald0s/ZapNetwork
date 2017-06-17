@@ -9,26 +9,37 @@ https://github.com/ald0s
 
 using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using System.Runtime.Serialization;
 
 namespace ZapNetwork.Shared {
     [Serializable]
+    // CRUCIAL:
+    // Data MUST be read in the exact same order it was written.
+    // Not adhereing to this standard will break things terribly!
     public class CNetMessage {
-        public string MessageName { get { return this.sName; } }
-        public int Size { get { return this.item_count; } }
+        public string sMessageName;
+        public object[] items;
+        public int item_count = 0;
 
-        private string sName;
+        public CNetMessage() {
 
-        private object[] items;
-        private int item_count = 0;
-
-        public CNetMessage(string _name) {
-            this.sName = _name;
         }
 
-        public virtual void Complete() {
+        public string GetMessageName() {
+            return sMessageName;
+        }
+
+        public CNetMessage(string _name) {
+            this.sMessageName = _name;
+        }
+
+        // Override this to 'reconstruct' the object on the receiving end.
+        // For example; call Read operations into existing properties.
+        protected virtual void Complete() {
 
         }
 
@@ -51,6 +62,17 @@ namespace ZapNetwork.Shared {
 
         public void WriteDouble(double d) {
             AddObject(d);
+        }
+
+        public void WriteByte(byte b) {
+            AddObject(b);
+        }
+
+        public void WriteColour(Color color) {
+            WriteByte(color.A);
+            WriteByte(color.R);
+            WriteByte(color.G);
+            WriteByte(color.B);
         }
 
         private void AddObject(object obj) {
@@ -82,7 +104,23 @@ namespace ZapNetwork.Shared {
             return (double)ReadObject();
         }
 
+        public byte ReadByte() {
+            return (byte)ReadObject();
+        }
+
+        public Color ReadColour() {
+            byte[] col = new byte[4];
+            for (int i = 0; i < 4; i++) {
+                col[i] = ReadByte();
+            }
+
+            return Color.FromArgb(col[0], col[1], col[2], col[3]);
+        }
+
         private object ReadObject() {
+            if (item_count == 0)
+                return null;
+
             List<object> objects = items.ToList();
             object o = items[0];
             objects.RemoveAt(0);

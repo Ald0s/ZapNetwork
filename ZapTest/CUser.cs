@@ -13,6 +13,7 @@ using System.Threading.Tasks;
 
 using System.Net.Sockets;
 using ZapNetwork.Server;
+using System.Drawing;
 
 namespace ZapTest {
     public class CUser : CServerClient {
@@ -34,17 +35,18 @@ namespace ZapTest {
         private void CUser_NetMessageReceived(CServerClient client, ZapNetwork.Shared.CNetMessage message) {
             CUser user = (CUser)client; // Cast to your type.
 
-            switch (message.MessageName) {
-                case "msg_SetInfo": // See this type in 'msg_SetInfo'
-                    msg_SetInfo setinfo = (msg_SetInfo)message;
-
+            switch (message.GetMessageName()) {
+                case "setinfo":
                     // Read the intended information.
-                    string name = setinfo.ReadString();
-                    int health = setinfo.ReadInt();
+                    string name = message.ReadString();
+                    int health = message.ReadInt();
+                    Color col = message.ReadColour();
 
                     // Examples.
                     user.SetUsername(name);
                     user.SetHealth(health);
+
+                    Console.WriteLine("Received color: " + col.ToString());
 
                     WelcomeUser(user);
                     break;

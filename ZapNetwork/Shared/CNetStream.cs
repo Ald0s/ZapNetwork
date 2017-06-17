@@ -28,19 +28,28 @@ namespace ZapNetwork.Shared {
         private TcpClient parent = null;
         private NetworkStream netStream = null;
 
+        private StreamWriter writer = null;
+        private StreamReader reader = null;
+
         private bool bShouldRead = false;
+
+        private Queue<byte[]> sendQueue;
 
         public delegate void DataRead_Delegate(CNetStream stream, byte[] buffer, int num_read);
         public event DataRead_Delegate DataReceived;
 
-        public delegate void CloseStream_Delegate(CNetStream stream, NetStreamClose_e reason);
-        public event CloseStream_Delegate CloseStream;
+        public delegate void ShouldClose_Delegate(CNetStream stream, NetStreamClose_e reason);
+        public event ShouldClose_Delegate ShouldClose;
 
         public CNetStream(TcpClient _client)
             : base("netstream") {
             parent = _client;
+            sendQueue = new Queue<byte[]>();
             netStream = _client.GetStream();
 
+            reader = new StreamReader(netStream);
+            writer = new StreamWriter(netStream);
+            
             bShouldRead = true;
         }
 
@@ -48,69 +57,57 @@ namespace ZapNetwork.Shared {
             BeginReading();
         }
 
-        public void WriteBuffer(byte[] buffer, int len) {
+        public void WriteBuffer(byte[] buffer) {
             try {
-                byte[] btLength = BitConverter.GetBytes(buffer.Length);
-
-                byte[] btBuffer = new byte[btLength.Length + len];
-                Buffer.BlockCopy(btLength, 0, btBuffer, 0, btLength.Length);
-                Buffer.BlockCopy(buffer, 0, btBuffer, btLength.Length, len);
-
-                netStream.BeginWrite(btBuffer, 0, btBuffer.Length, new AsyncCallback(WriteBuffer_Callback), null);
+                string base64 = Convert.ToBase64String(buffer);
+                writer.WriteLine(base64);
+                writer.Flush();
             } catch (IOException) {
-                Shutdown(NetStreamClose_e.EndOfStream);
+                ShouldClose_Internal(NetStreamClose_e.EndOfStream);
             }
-        }
-
-        private void WriteBuffer_Callback(IAsyncResult result) {
-            netStream.EndWrite(result);
         }
 
         private void BeginReading() {
             try {
+
                 while (bShouldRead) {
-                    byte[] sz = new byte[sizeof(int)];
-                    int len = netStream.Read(sz, 0, sizeof(int));
+                    string base64 = reader.ReadLine();
 
-                    if (len == 0) {
-                        Shutdown(NetStreamClose_e.EndOfStream);
-                        return;
+                    if (base64 == null) {
+                        ShouldClose_Internal(NetStreamClose_e.Corrupt);
+                        break;
                     }
 
-                    if (len < sizeof(int) || len > sizeof(int)) {
-                        Shutdown(NetStreamClose_e.Corrupt);
-                        return;
-                    }
-
-                    int result_len = BitConverter.ToInt32(sz, 0);
-                    byte[] result = new byte[result_len];
-
-                    len = netStream.Read(result, 0, result_len);
-                    if (len == 0) {
-                        Shutdown(NetStreamClose_e.EndOfStream);
-                        return;
-                    }
-
+                    byte[] result = Convert.FromBase64String(base64);
                     if (DataReceived != null) {
-                        DataReceived(this, result, result_len);
+                        DataReceived(this, result, result.Length);
                     }
                 }
             } catch (IOException) {
-                Shutdown(NetStreamClose_e.EndOfStream);
+                ShouldClose_Internal(NetStreamClose_e.EndOfStream);
             } catch (Exception e) {
                 ExceptionSummary(e);
-                Shutdown(NetStreamClose_e.Unknown);
+                ShouldClose_Internal(NetStreamClose_e.Unknown);
+            }
+        }
 
-                return;
+        private void ShouldClose_Internal(NetStreamClose_e reason) {
+            if (ShouldClose != null) {
+                ShouldClose(this, reason);
             }
         }
 
         public void Shutdown(NetStreamClose_e reason) {
-            bShouldRead = false;
+            if(netStream != null)
+                netStream.Close();
 
-            if (CloseStream != null) {
-                CloseStream(this, reason);
-            }
+            if (writer != null)
+                writer.Close();
+
+            if (reader != null)
+                reader.Close();
+
+            bShouldRead = false;
         }
     }
 }

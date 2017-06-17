@@ -19,6 +19,8 @@ using System.Net.Sockets;
 using System.Runtime.Serialization.Formatters.Binary;
 using System.IO;
 using System.Runtime.Serialization;
+using System.Reflection;
+using System.Xml.Serialization;
 
 namespace ZapNetwork.Shared {
     public class CClientShared : CObjectBase {
@@ -27,6 +29,7 @@ namespace ZapNetwork.Shared {
         protected CNetStream netStream = null;
 
         protected bool bValid = false;
+        private bool bShutdown = false;
 
         public CClientShared(string _name)
             : base(_name) {
@@ -39,7 +42,7 @@ namespace ZapNetwork.Shared {
 
             this.netStream = new CNetStream(client);
             netStream.DataReceived += NetStream_DataReceived;
-            netStream.CloseStream += NetStream_CloseStream;
+            netStream.ShouldClose += NetStream_ShouldClose;
 
             if (use_thread) {
                 this.thrClient = new Thread(() => netStream.Start());
@@ -52,7 +55,7 @@ namespace ZapNetwork.Shared {
         public virtual void SendNetMessage(CNetMessage msg) {
             if (!bValid)
                 return;
-
+            
             try {
                 byte[] btOutgoingBuffer = null;
 
@@ -61,19 +64,19 @@ namespace ZapNetwork.Shared {
                     bf.Serialize(ms, msg);
 
                     ms.Flush();
-                    ms.Close();
-
                     btOutgoingBuffer = ms.ToArray();
-                }
 
+                    ms.Close();
+                }
+                
                 if (btOutgoingBuffer == null || btOutgoingBuffer.Length == 0) {
                     NegativeStatus("FATAL! Failed to send net message, failed to serialize object!");
                     return;
                 }
 
-                netStream.WriteBuffer(btOutgoingBuffer, btOutgoingBuffer.Length);
-            } catch (SerializationException) {
-                NegativeStatus("FATAL! Is your net message type marked with the Serializable attribute?");
+                netStream.WriteBuffer(btOutgoingBuffer);
+            } catch (SerializationException a) {
+                NegativeStatus("FATAL! Is your net message type marked with the Serializable attribute? '" + msg.GetType().Name + "'");
             } catch (Exception e) {
                 ExceptionSummary(e);
             }
@@ -84,26 +87,30 @@ namespace ZapNetwork.Shared {
         /// For handling internal net messages.
         /// </summary>
         protected virtual void HandleNetMessageInternal(CNetMessage msg) {
-
+            
         }
 
         // Reactionary function - not to be called.
-        protected virtual void NetStream_CloseStream(CNetStream stream, NetStreamClose_e reason) {
+        protected virtual void NetStream_ShouldClose(CNetStream stream, NetStreamClose_e reason) {
+            string strReason = null;
             switch (reason) {
                 case NetStreamClose_e.Unknown:
-                    NegativeStatus("Disconnect! An unknown error occurred!");
+                    strReason = "Disconnect! An unknown error occurred!";
                     break;
 
                 case NetStreamClose_e.EndOfStream:
-                    NegativeStatus("Disconnect! End of stream!");
+                    strReason = "Disconnect! End of stream!";
                     break;
 
                 case NetStreamClose_e.Corrupt:
-                    NegativeStatus("Disconnect! The stream is corrupt!");
+                    strReason = "Disconnect! The stream is corrupt!";
                     break;
             }
 
             bValid = false;
+            NegativeStatus(strReason);
+
+            Shutdown(strReason);
         }
 
         private void NetStream_DataReceived(CNetStream stream, byte[] buffer, int num_read) {
@@ -111,23 +118,34 @@ namespace ZapNetwork.Shared {
                 object o = null;
 
                 using (MemoryStream ms = new MemoryStream(buffer, 0, num_read)) {
+                    ms.Seek(0, SeekOrigin.Begin);
+
                     BinaryFormatter bf = new BinaryFormatter();
                     o = (object)bf.Deserialize(ms);
                 }
 
-                if (o == null || o.GetType().IsSubclassOf(typeof(CNetMessage))) {
+                if (o != null && (o.GetType() == typeof(CNetMessage) || o.GetType().IsSubclassOf(typeof(CNetMessage)))) {
                     HandleNetMessageInternal((CNetMessage)o);
                     return;
                 }
-
+                
                 NegativeStatus("FATAL! Received data is NOT a net message. Dropping message...");
             } catch (Exception e) {
                 ExceptionSummary(e);
             }
         }
 
+        protected int CalculateChallengeResult(int input) {
+            return input = (input + 5) * 10 / 2;
+        }
+
         public virtual void Shutdown(string reason) {
-            if(netStream != null)
+            if (bShutdown)
+                return;
+
+            bShutdown = true;
+
+            if (netStream != null)
                 netStream.Shutdown(NetStreamClose_e.Shutdown);
 
             if (client != null)

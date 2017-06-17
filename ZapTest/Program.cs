@@ -37,7 +37,7 @@ namespace ZapTest {
             ServerCfg cfg = new ServerCfg("Test Server", "Welcome to my server!", "", port, 4555, 32);
             CServer server = new CServer(cfg);
 
-            server.ShutdownServer();
+            server.StartServer();
         }
 
         private static void Client(string ip, int port) {

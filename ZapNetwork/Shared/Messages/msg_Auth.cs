@@ -12,9 +12,11 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using System.Xml.Serialization;
 
 namespace ZapNetwork.Shared.Messages {
     [Serializable]
+    [XmlInclude(typeof(msg_Auth))]
     public class msg_Auth : CNetMessage {
         public string Password { get { return this.sPassword; } }
 
@@ -27,6 +29,10 @@ namespace ZapNetwork.Shared.Messages {
             : base("authentication") {
             this.ServerNumber = _server;
             this.sPassword = _pass;
+        }
+
+        public msg_Auth() {
+
         }
 
         public void CalculateClientResult() {

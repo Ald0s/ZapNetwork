@@ -31,26 +31,41 @@ namespace ZapNetwork.Server {
 
         private Thread thrThread = null;
 
+        private bool bUseThread = true;
         private bool shouldAccept = false;
+
+        public delegate void ServerStarted_Delegate();
+        public event ServerStarted_Delegate ServerStarted;
+
+        public delegate void ServerStopped_Delegate(string reason);
+        public event ServerStopped_Delegate ServerStopped;
 
         public CServerMain(ServerCfg cfg, bool use_thread = true)
             : base("servermain") {
             config = cfg;
+            bUseThread = use_thread;
+
             this.clients = new List<CServerClient>();
+        }
+
+        // Supply configuration here if its ever-changing.
+        public void StartServer(ServerCfg cfg = null) {
+            if (cfg != null)
+                config = cfg;
 
             this.shouldAccept = true;
 
-            if (use_thread) {
-                this.thrThread = new Thread(() => StartServer());
+            if (bUseThread) {
+                this.thrThread = new Thread(() => StartServer_Internal());
                 this.thrThread.Start();
             } else {
-                StartServer();
+                StartServer_Internal();
             }
         }
 
-        private void StartServer() {
+        private void StartServer_Internal() {
             if (!CreateServer()) {
-                ShutdownServer();
+                ShutdownServer("An error occurred while launching the server!");
                 return;
             }
 
@@ -68,6 +83,9 @@ namespace ZapNetwork.Server {
                 listener = new TcpListener(IPAddress.Any, port);
                 listener.Start(64);
                 PositiveStatus("'" + config.ServerName + "' started on port " + port + "!");
+
+                if (ServerStarted != null)
+                    ServerStarted();
 
                 return true;
             } catch (Exception e) {
@@ -133,7 +151,7 @@ namespace ZapNetwork.Server {
             clients.Remove(client);
         }
 
-        public void ShutdownServer() {
+        public void ShutdownServer(string reason = "Server shutting down.") {
             try {
                 shouldAccept = false;
 
@@ -141,11 +159,16 @@ namespace ZapNetwork.Server {
                     listener.Stop();
 
                 for (int i = 0; i < clients.Count; i++) {
-                    clients[i].Shutdown("Server shutting down.");
+                    clients[i].Shutdown(reason);
                 }
 
                 clients.Clear();
-            }catch(Exception e) {
+
+                NegativeStatus(reason);
+
+                if (ServerStopped != null)
+                    ServerStopped(reason);
+            } catch(Exception e) {
                 ExceptionSummary(e);
             }
         }
