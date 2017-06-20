@@ -22,7 +22,8 @@ using System.Runtime.Serialization.Formatters.Binary;
 
 namespace ZapNetwork.Server {
     public class CServerClient : CClientShared {
-        public bool Connected { get { return client.Connected && bValid; } }
+        public bool Connected { get { return IsConnected(); } }
+        public bool IsLocalhost { get { return this.bLocalhost; } }
         public string ConnectionInfo { get { return this.sConnectionInfo; } }
         public int ClientID { get { return this.iClientID; } }
 
@@ -39,12 +40,18 @@ namespace ZapNetwork.Server {
 
         private string sConnectionInfo = null;
         private bool bAuthenticated = false;
+        private bool bLocalhost = false;
 
         private int iClientID = -1;
         private int iServerNumber = -1;
 
         public CServerClient(CServerMain _main, TcpClient _client, bool use_thread = true)
-            : base(_client.Client.RemoteEndPoint.ToString()) {
+            : base((_client == null) ? "localhost" : _client.Client.RemoteEndPoint.ToString(), (_main == null && _client == null) ? true : false) {
+            if(_main == null || _client == null) {
+                SetLocalhost();
+                return;
+            }
+
             this.main = _main;
             this.client = _client;
             sConnectionInfo = this.client.Client.RemoteEndPoint.ToString();
@@ -86,7 +93,7 @@ namespace ZapNetwork.Server {
                     if (Authenticated != null) {
                         Authenticated(this);
                     }
-                    break;
+                    return;
             }
 
             // Only allow the net message to end-user if we're authenticated (security.)
@@ -160,6 +167,26 @@ namespace ZapNetwork.Server {
                 iClientID = id;
                 break;
             }
+        }
+
+        private bool IsConnected() {
+            if (client == null && !bLocalhost)
+                return false;
+            else if (client == null && bLocalhost)
+                return true;
+            else
+                return client.Connected && bValid;
+        }
+
+        // Set this client as localhost.
+        private void SetLocalhost() {
+            sConnectionInfo = "localhost";
+            iClientID = 0;
+
+            bLocalhost = true;
+            bAuthenticated = true;
+
+            Start(false);
         }
     }
 }

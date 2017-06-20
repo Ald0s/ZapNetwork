@@ -43,7 +43,7 @@ namespace ZapNetwork.Client {
         private bool bAuthenticated = false;
 
         public CClientMain(ClientCfg _cfg)
-            :base("localhost-client") {
+            :base("localhost-client", false) {
             this.config = _cfg;
         }
 

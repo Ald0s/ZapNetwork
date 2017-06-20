@@ -25,6 +25,9 @@ namespace ZapNetwork.Shared {
         public object[] items;
         public int item_count = 0;
 
+        [NonSerialized]
+        private int idx = 0;
+
         public CNetMessage() {
 
         }
@@ -118,15 +121,13 @@ namespace ZapNetwork.Shared {
         }
 
         private object ReadObject() {
-            if (item_count == 0)
+            // Nothing more to read.
+            if (idx == item_count)
                 return null;
 
             List<object> objects = items.ToList();
-            object o = items[0];
-            objects.RemoveAt(0);
-
-            items = objects.ToArray();
-            item_count = objects.Count;
+            object o = items[idx];
+            idx++;
 
             return o;
         }

@@ -30,15 +30,18 @@ namespace ZapNetwork.Shared {
 
         protected bool bValid = false;
         private bool bShutdown = false;
-
-        public CClientShared(string _name)
+        private bool bLocalhost = false;
+        public CClientShared(string _name, bool localhost)
             : base(_name) {
-            
+            this.bLocalhost = localhost;
         }
 
         // When client is connected, call Start() to initialise the actual processes.
         protected void Start(bool use_thread) {
             bValid = true;
+
+            if (bLocalhost)
+                return;
 
             this.netStream = new CNetStream(client);
             netStream.DataReceived += NetStream_DataReceived;
@@ -55,6 +58,12 @@ namespace ZapNetwork.Shared {
         public virtual void SendNetMessage(CNetMessage msg) {
             if (!bValid)
                 return;
+
+            // If we are on loopback, just send the message back to us.
+            if(client == null && bLocalhost) {
+                HandleNetMessageInternal(msg);
+                return;
+            }
             
             try {
                 byte[] btOutgoingBuffer = null;
