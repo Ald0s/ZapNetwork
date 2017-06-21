@@ -116,7 +116,9 @@ namespace ZapNetwork.Server {
                 NewClient(this, client);
 
                 AcceptClients();
-            } catch(Exception e) {
+            } catch (ObjectDisposedException) {
+                return;
+            } catch (Exception e) {
                 ExceptionSummary(e);
             }
         }
@@ -135,6 +137,7 @@ namespace ZapNetwork.Server {
                 client.Kick("Unknown serverside error.");
                 return;
             }
+            client.Disconnected += HandleDisconnection;
 
             clients.Add(client);
         }

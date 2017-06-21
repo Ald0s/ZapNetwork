@@ -136,11 +136,11 @@ namespace ZapNetwork.Server {
 
         public override void Shutdown(string reason) {
             bAuthenticated = false;
+            base.Shutdown(reason);
+
             if (this.Disconnected != null) {
                 Disconnected(this, reason);
             }
-
-            base.Shutdown(reason);
         }
 
         protected virtual void SetupReceived(CNetMessage setup) {
