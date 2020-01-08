@@ -9,7 +9,7 @@
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>ZapNetwork</RootNamespace>
     <AssemblyName>ZapNetwork</AssemblyName>
-    <TargetFrameworkVersion>v4.0</TargetFrameworkVersion>
+    <TargetFrameworkVersion>v3.5</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <TargetFrameworkProfile />
   </PropertyGroup>
@@ -48,10 +48,13 @@
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Server\CServerClient.cs" />
     <Compile Include="Server\CServerMain.cs" />
+    <Compile Include="Shared\BinSerializer.cs" />
     <Compile Include="Shared\CClientShared.cs" />
     <Compile Include="Shared\CNetMessage.cs" />
     <Compile Include="Shared\CNetStream.cs" />
     <Compile Include="Shared\CObjectBase.cs" />
+    <Compile Include="Shared\CUdpShared.cs" />
+    <Compile Include="Shared\Messages\msg_Auth.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

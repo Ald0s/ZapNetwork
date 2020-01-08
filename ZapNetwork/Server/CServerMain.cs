@@ -11,7 +11,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
 
 using System.Net.Sockets;
 using ZapNetwork.Shared;
@@ -131,7 +130,7 @@ namespace ZapNetwork.Server {
             UserConnected(new CServerClient(this, client));
         }
 
-        protected void UserConnected(CServerClient client) {
+        protected virtual void UserConnected(CServerClient client) {
             if (!client.Connected) {
                 NegativeStatus("Refused connection from " + client.ConnectionInfo + ": couldn't build client!");
                 client.Kick("Unknown serverside error.");
@@ -150,7 +149,7 @@ namespace ZapNetwork.Server {
             return null;
         }
 
-        public void HandleDisconnection(CServerClient client, string reason) {
+        public virtual void HandleDisconnection(CServerClient client, string reason) {
             clients.Remove(client);
         }
 

@@ -11,38 +11,43 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
 
 namespace ZapNetwork {
     public class ServerCfg {
-        public string ServerName { get { return this.sServerName; } }
-        public string ServerDescription { get { return this.sServerDescription; } }
-        public string Password { get { return this.sPassword; } }
+        public string ServerName { get { return this.serverName; } }
+        public string ServerDescription { get { return this.serverDesc; } }
+        public string Password { get { return this.password; } }
 
-        public int PortNumber { get { return this.iPortNumber; } }
-        public int SearchPort { get { return this.iSearchPort; } } // Will be used so that clients can search LAN for our server.
-        public int MaxConnections { get { return this.iMaxConnections; } }
+        public int PortNumber { get { return this.portNumber; } }
+        public int SearchPort { get { return this.searchPort; } } // Will be used so that clients can search LAN for our server.
+        public int MaxConnections { get { return this.maxConnections; } }
 
-        private string sServerName;
-        private string sServerDescription;
-        private string sPassword;
+        public bool UdpEnabled { get { return this.enableUdp; } }
 
-        private int iPortNumber;
-        private int iSearchPort;
-        private int iMaxConnections;
+        private string serverName;
+        private string serverDesc;
+        private string password;
 
-        public ServerCfg(string _name, string _desc, string _pass, int _port, int _search, int _max_conn) {
-            this.sServerName = _name;
-            this.sServerDescription = _desc;
-            this.sPassword = _pass;
+        private int portNumber;
+        private int searchPort;
+        private int maxConnections;
 
-            this.iPortNumber = _port;
-            this.iSearchPort = _search;
-            this.iMaxConnections = _max_conn;
+        private bool enableUdp = false;
+
+        public ServerCfg(string _name, string _desc, string _pass, int _port, int _search, int _max_conn, bool _enable_udp) {
+            this.serverName = _name;
+            this.serverDesc = _desc;
+            this.password = _pass;
+
+            this.portNumber = _port;
+            this.searchPort = _search;
+            this.maxConnections = _max_conn;
+
+            this.enableUdp = _enable_udp;
         }
 
         public bool IsUsingPassword() {
-            return sPassword != null && sPassword != "";
+            return password != null && password != "";
         }
     }
 }

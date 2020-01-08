@@ -22,6 +22,12 @@ namespace ZapTest {
             this.iHealth = _health;
         }
 
+        protected override void HandlePacketInternal(CNetMessage msg) {
+            Console.WriteLine("Packet received " + msg.sMessageName.ToString());
+
+            base.HandlePacketInternal(msg);
+        }
+
         private void CClient_Authenticated(CClientMain client) {
             // Now that our client is authenticated, we can send custom messages.
             CNetMessage setinfo = new CNetMessage("setinfo");

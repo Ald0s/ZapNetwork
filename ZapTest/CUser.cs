@@ -14,6 +14,7 @@ using System.Threading.Tasks;
 using System.Net.Sockets;
 using ZapNetwork.Server;
 using System.Drawing;
+using ZapNetwork.Shared;
 
 namespace ZapTest {
     public class CUser : CServerClient {
@@ -25,7 +26,14 @@ namespace ZapTest {
 
             // Subscribe to these events in your custom type, then react here.
             this.Authenticated += CUser_Authenticated;
+            this.UdpNowActive += CUser_UdpNowActive;
             this.NetMessageReceived += CUser_NetMessageReceived;
+        }
+
+        private void CUser_UdpNowActive() {
+            CNetMessage msg = new CNetMessage("test");
+
+            SendPacket(msg);
         }
 
         private void CUser_Authenticated(CServerClient client) {

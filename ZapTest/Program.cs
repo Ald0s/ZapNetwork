@@ -34,21 +34,15 @@ namespace ZapTest {
         }
 
         private static void Server(int port) {
-            ServerCfg cfg = new ServerCfg("Test Server", "Welcome to my server!", "", port, 4555, 32);
+            ServerCfg cfg = new ServerCfg("Test Server", "Welcome to my server!", "", port, 4555, 32, true);
             CServer server = new CServer(cfg);
 
             server.StartServer();
         }
 
         private static void Client(string ip, int port) {
-            Console.WriteLine("Enter your name:");
-            string name = Console.ReadLine();
-
-            Console.WriteLine("Enter your health:");
-            int health = int.Parse(Console.ReadLine());
-
             ClientCfg cfg = new ClientCfg(ip, port, "");
-            CClient client = new CClient(cfg, name, health);
+            CClient client = new CClient(cfg, "aldos", 100);
             client.Connect();
         }
     }

@@ -11,7 +11,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
 
 using System.Threading;
 using System.Net;
@@ -27,6 +26,18 @@ namespace ZapNetwork.Shared {
         protected TcpClient client = null;
         protected Thread thrClient = null;
         protected CNetStream netStream = null;
+        protected CUdpShared udpShared = null;
+        private BinSerializer serializer = null;
+
+        public delegate bool HandleNetMsgDelegate(CNetMessage msg);
+        // Return true if HANDLED.
+        // Subclass will not be called.
+        public event HandleNetMsgDelegate HandleNetMsg;
+
+        public delegate bool HandlePacketDelegate(CNetMessage msg);
+        // Return true if HANDLED.
+        // Subclass will not be called.
+        public event HandlePacketDelegate HandlePacket;
 
         protected bool bValid = false;
         private bool bShutdown = false;
@@ -34,6 +45,9 @@ namespace ZapNetwork.Shared {
         public CClientShared(string _name, bool localhost)
             : base(_name) {
             this.bLocalhost = localhost;
+
+            if(!localhost)
+                this.serializer = new BinSerializer();
         }
 
         // When client is connected, call Start() to initialise the actual processes.
@@ -64,29 +78,43 @@ namespace ZapNetwork.Shared {
                 HandleNetMessageInternal(msg);
                 return;
             }
-            
+
+
+            byte[] buffer = serializer.SerializeObject(msg);
+            if (buffer == null)
+                return;
+
+            netStream.WriteBuffer(buffer);
+        }
+
+        public virtual void SendPacket(CNetMessage msg) {
+            if (!bValid || udpShared == null)
+                return;
+
+            // If we are on loopback, just send the message back to us.
+            if (client == null && bLocalhost) {
+                HandlePacketInternal(msg);
+                return;
+            }
+
+            byte[] buffer = serializer.SerializeObject(msg);
+            if (buffer == null)
+                return;
+
+            if((buffer.Length + 4) > CUdpShared.RecvSz) {
+                NegativeStatus("Failed to send message of name " + msg.sMessageName + "! It's too big for packet.");
+                return;
+            }
+
             try {
-                byte[] btOutgoingBuffer = null;
+                byte[] real_buffer = new byte[256];
 
-                using (MemoryStream ms = new MemoryStream()) {
-                    BinaryFormatter bf = new BinaryFormatter();
-                    bf.Serialize(ms, msg);
+                byte[] sz = BitConverter.GetBytes(buffer.Length);
+                Buffer.BlockCopy(sz, 0, real_buffer, 0, sz.Length);
+                Buffer.BlockCopy(buffer, 0, real_buffer, sz.Length, buffer.Length);
 
-                    ms.Flush();
-                    btOutgoingBuffer = ms.ToArray();
-
-                    ms.Close();
-                }
-                
-                if (btOutgoingBuffer == null || btOutgoingBuffer.Length == 0) {
-                    NegativeStatus("FATAL! Failed to send net message, failed to serialize object!");
-                    return;
-                }
-
-                netStream.WriteBuffer(btOutgoingBuffer);
-            } catch (SerializationException a) {
-                NegativeStatus("FATAL! Is your net message type marked with the Serializable attribute? '" + msg.GetType().Name + "'");
-            } catch (Exception e) {
+                udpShared.SendData(real_buffer, real_buffer.Length);
+            }catch(Exception e) {
                 ExceptionSummary(e);
             }
         }
@@ -97,6 +125,14 @@ namespace ZapNetwork.Shared {
         /// </summary>
         protected virtual void HandleNetMessageInternal(CNetMessage msg) {
             
+        }
+
+        /// <summary>
+        /// DO NOT OVERRIDE UNLESS YOU'RE GOOD!!!
+        /// For handling internal packets.
+        /// </summary>
+        protected virtual void HandlePacketInternal(CNetMessage msg) {
+
         }
 
         // Reactionary function - not to be called.
@@ -122,23 +158,20 @@ namespace ZapNetwork.Shared {
             Shutdown(strReason);
         }
 
-        private void NetStream_DataReceived(CNetStream stream, byte[] buffer, int num_read) {
+        private void NetStream_DataReceived(CNetStream stream, byte[] buffer, int sz) {
             try {
-                object o = null;
+                CNetMessage msg = serializer.DeserializeObject<CNetMessage>(buffer, sz);
+                if (msg != null) {
+                    // Attempt to handle this message without subclass interference,
+                    // using this we can build things like replicator/chunking systems.
+                    if (HandleNetMsg != null && HandleNetMsg(msg))
+                        return;
 
-                using (MemoryStream ms = new MemoryStream(buffer, 0, num_read)) {
-                    ms.Seek(0, SeekOrigin.Begin);
-
-                    BinaryFormatter bf = new BinaryFormatter();
-                    o = (object)bf.Deserialize(ms);
-                }
-
-                if (o != null && (o.GetType() == typeof(CNetMessage) || o.GetType().IsSubclassOf(typeof(CNetMessage)))) {
-                    HandleNetMessageInternal((CNetMessage)o);
+                    HandleNetMessageInternal(msg);
                     return;
                 }
-                
-                NegativeStatus("FATAL! Received data is NOT a net message. Dropping message...");
+
+                NegativeStatus("FATAL! Received data is NOT a packet. Dropping packet...");
             } catch (Exception e) {
                 ExceptionSummary(e);
             }
@@ -148,11 +181,43 @@ namespace ZapNetwork.Shared {
             return input = (input + 5) * 10 / 2;
         }
 
+        protected int SetupUdpInternal() {
+            if (client == null || !client.Connected)
+                return -1;
+
+            this.udpShared = new CUdpShared((IPEndPoint)client.Client.RemoteEndPoint);
+            udpShared.RawDataReceived += UdpShared_RawDataReceived;
+
+            return udpShared.SetupListener();
+        }
+
+        private void UdpShared_RawDataReceived(EndPoint ep, byte[] buffer, int sz) {
+            try {
+                CNetMessage msg = serializer.DeserializeObject<CNetMessage>(buffer, sz);
+                if(msg != null) {
+                    // Attempt to handle this message without subclass interference,
+                    // using this we can build things like replicator/chunking systems.
+                    if (HandlePacket != null && HandlePacket(msg))
+                        return;
+
+                    HandlePacketInternal(msg);
+                    return;
+                }
+
+                NegativeStatus("FATAL! Received data is NOT a packet. Dropping packet...");
+            } catch (Exception e) {
+                ExceptionSummary(e);
+            }
+        }
+
         public virtual void Shutdown(string reason) {
             if (bShutdown)
                 return;
 
             bShutdown = true;
+
+            if (udpShared != null)
+                udpShared.Close();
 
             if (netStream != null)
                 netStream.Shutdown(NetStreamClose_e.Shutdown);

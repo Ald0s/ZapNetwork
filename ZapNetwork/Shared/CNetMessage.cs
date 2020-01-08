@@ -12,7 +12,6 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
 using System.Runtime.Serialization;
 
 namespace ZapNetwork.Shared {
@@ -42,8 +41,21 @@ namespace ZapNetwork.Shared {
 
         // Override this to 'reconstruct' the object on the receiving end.
         // For example; call Read operations into existing properties.
-        protected virtual void Complete() {
+        public virtual void Complete() {
 
+        }
+
+        public void ChangeObjectAt(int idx, object o) {
+            items[idx] = o;
+        }
+
+        public T GetObjectAt<T>(int idx) {
+            try {
+                return (T)items[idx];
+            }catch(Exception e) {
+                Console.WriteLine(e.StackTrace);
+            }
+            return default(T);
         }
 
         #region Write
@@ -65,6 +77,10 @@ namespace ZapNetwork.Shared {
 
         public void WriteDouble(double d) {
             AddObject(d);
+        }
+
+        public void WriteFloat(float f) {
+            AddObject(f);
         }
 
         public void WriteByte(byte b) {
@@ -109,6 +125,10 @@ namespace ZapNetwork.Shared {
 
         public byte ReadByte() {
             return (byte)ReadObject();
+        }
+
+        public float ReadFloat() {
+            return (float)ReadObject();
         }
 
         public Color ReadColour() {

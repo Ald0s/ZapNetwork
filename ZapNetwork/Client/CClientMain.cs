@@ -11,7 +11,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
 
 using System.Net;
 using System.Net.Sockets;
@@ -19,10 +18,10 @@ using ZapNetwork.Shared;
 
 namespace ZapNetwork.Client {
     public class CClientMain : CClientShared {
-        public bool Connected { get { return client.Connected; } }
-        public string ServerName { get { return this.sServerName; } }
-        public string ServerDescription { get { return this.sServerDescription; } }
-        public int ClientID { get { return this.iClientID; } }
+        public bool Connected { get { return (client == null) ? false : client.Connected; } }
+        public string ServerName { get { return this.serverName; } }
+        public string ServerDescription { get { return this.serverDesc; } }
+        public int ClientID { get { return this.clientID; } }
 
         public ClientCfg Configuration { get { return this.config; } }
         private ClientCfg config;
@@ -30,17 +29,21 @@ namespace ZapNetwork.Client {
         public delegate void Authenticated_Delegate(CClientMain client);
         public event Authenticated_Delegate Authenticated;
 
+        public delegate void FullyConnectedDelegate(CClientMain client, CNetMessage msg);
+        public event FullyConnectedDelegate FullyConnected;
+
         public delegate void NetMessageReceived_Delegate(CClientMain client, CNetMessage message);
         public event NetMessageReceived_Delegate NetMessageReceived;
 
         public delegate void Disconnected_Delegate(string reason);
         public event Disconnected_Delegate Disconnected;
 
-        private string sServerName;
-        private string sServerDescription;
-        private int iClientID = -1;
+        private string serverName;
+        private string serverDesc;
+        private int clientID = -1;
 
-        private bool bAuthenticated = false;
+        private bool authenticated = false;
+        private bool udpActive = false;
 
         public CClientMain(ClientCfg _cfg)
             :base("localhost-client", false) {
@@ -64,7 +67,7 @@ namespace ZapNetwork.Client {
 
             switch (msg.GetMessageName()) {
                 case "authentication":
-                    if (bAuthenticated)
+                    if (authenticated)
                         return;
 
                     int server = msg.ReadInt();
@@ -77,24 +80,48 @@ namespace ZapNetwork.Client {
                     return;
 
                 case "setup":
-                    iClientID = msg.ReadInt();
-                    sServerName = msg.ReadString();
-                    sServerDescription = msg.ReadString();
+                    clientID = msg.ReadInt();
+                    serverName = msg.ReadString();
+                    serverDesc = msg.ReadString();
+                    int udp_port = msg.ReadInt();
+
+                    int our_listen_port = -1;
+                    if (udp_port > 0) {
+                        our_listen_port = SetupUdpInternal();
+
+                        PositiveStatus("Udp requested by server; listener initialized on " + our_listen_port + ", we're sending to " + udp_port);
+                        udpShared.SetupSender(udp_port);
+                    }
 
                     ReceivedSetupData(msg);
-                    PositiveStatus("We've been authenticated! The server says; " + sServerDescription);
-                    bAuthenticated = true;
+                    PositiveStatus("We've been authenticated! The server says; " + serverDesc);
+                    authenticated = true;
 
                     if (Authenticated != null) {
                         Authenticated(this);
                     }
-                    
-                    SendSetupData(new CNetMessage("setup"));
+
+                    CNetMessage setup = new CNetMessage("setup");
+                    setup.WriteInt(our_listen_port);
+
+                    SendSetupData(setup);
                     return;
+
+                case "connected":
+                    // User is connected, authenticated and setup.
+                    udpActive = true;
+
+                    if (FullyConnected != null)
+                        FullyConnected(this, msg);
+                    break;
             }
-            if (NetMessageReceived != null && bAuthenticated) {
+
+            if (NetMessageReceived != null && authenticated)
                 NetMessageReceived(this, msg);
-            }
+        }
+
+        protected override void HandlePacketInternal(CNetMessage msg) {
+            base.HandlePacketInternal(msg);
         }
 
         private bool ConnectToServer(bool use_thread) {
@@ -155,17 +182,26 @@ namespace ZapNetwork.Client {
             SendNetMessage(reply);
         }
 
+        public override void SendPacket(CNetMessage msg) {
+            if (!authenticated || !udpActive)
+                return;
+
+            base.SendPacket(msg);
+        }
+
         public override void Shutdown(string reason) {
-            bAuthenticated = false;
+            authenticated = false;
+            udpActive = false;
+
             base.Shutdown(reason);
 
             if(Disconnected != null) {
                 Disconnected(reason);
             }
 
-            iClientID = -1;
-            sServerName = null;
-            sServerDescription = null;
+            clientID = -1;
+            serverName = null;
+            serverDesc = null;
 
             NegativeStatus("Disconnected: " + reason);
         }
