@@ -102,9 +102,9 @@ namespace ZapNetwork.Client {
                     }
 
                     CNetMessage setup = new CNetMessage("setup");
-                    setup.WriteInt(our_listen_port);
-
                     SendSetupData(setup);
+
+                    setup.WriteInt(our_listen_port);
                     return;
 
                 case "connected":

@@ -52,13 +52,14 @@ namespace ZapNetwork.Server {
         private int iServerNumber = -1;
 
         public CServerClient(CServerMain _main, TcpClient _client, bool use_thread = true)
-            : base((_client == null) ? "localhost" : _client.Client.RemoteEndPoint.ToString(), (_main == null && _client == null) ? true : false) {
-            if(_main == null || _client == null) {
+            : base((_client == null) ? "localhost" : _client.Client.RemoteEndPoint.ToString(), (_client == null) ? true : false) {
+            this.main = _main;
+
+            if (_client == null) {
                 SetLocalhost();
                 return;
             }
 
-            this.main = _main;
             this.client = _client;
             connectionInfo = this.client.Client.RemoteEndPoint.ToString();
 
@@ -173,16 +174,18 @@ namespace ZapNetwork.Server {
         }
 
         protected virtual void SetupReceived(CNetMessage setup) {
+            if(!localhost && main.Configuration.UdpEnabled) { 
             int client_udp_port = setup.ReadInt();
-            if (client_udp_port > 0) {
-                udpShared.SetupSender(client_udp_port);
+                if (client_udp_port > 0) {
+                    udpShared.SetupSender(client_udp_port);
 
-                PositiveStatus("Client accepts udp request, we're sending to " + client_udp_port);
+                    PositiveStatus("Client accepts udp request, we're sending to " + client_udp_port);
 
-                udpActive = true;
+                    udpActive = true;
 
-                if (UdpNowActive != null)
-                    UdpNowActive();
+                    if (UdpNowActive != null)
+                        UdpNowActive();
+                }
             }
 
             SendFullyConnected(new CNetMessage("connected"));
